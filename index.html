@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>多语言姓名生成器</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+      margin: 0;
+      background-color: #f4f7f6;
+      text-align: center;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    header {
+      background-color: #00b894;
+      color: white;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      border-bottom: 3px solid #00a080;
+    }
+    h1 {
+      margin: 0;
+      font-weight: 600;
+    }
+    main {
+      flex: 1;
+    }
+    .controls {
+      margin: 25px auto;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 15px;
+      padding: 0 15px;
+    }
+    .controls select, .controls button {
+      padding: 12px 18px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background-color: white;
+    }
+    .controls button {
+      background-color: #00b894;
+      color: white;
+      border-color: #00b894;
+      font-weight: 600;
+    }
+    .controls button:hover {
+      background-color: #00a080;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      transform: translateY(-2px);
+    }
+    .controls select:hover {
+        border-color: #00b894;
+    }
+    .name-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 15px;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .name-button {
+      padding: 15px;
+      background-color: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+      font-size: 15px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    .name-button:hover {
+      background-color: #e8fcf7;
+      border-color: #00b894;
+      transform: translateY(-3px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(0, 0, 0, 0.75);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s;
+      z-index: 1000;
+    }
+    .toast.show {
+      opacity: 1;
+      visibility: visible;
+    }
+    footer {
+      padding: 25px;
+      font-size: 14px;
+      color: #777;
+      background-color: #e9ecef;
+    }
+    footer ul {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    footer a {
+      color: #00b894;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🌍 多语言姓名生成器</h1>
+  </header>
+
+  <main>
+    <div class="controls">
+      <label>选择姓名语言风格：
+        <select id="languageSelect">
+          <option value="zh">中文</option>
+          <option value="en">英文</option>
+          <option value="id">印尼</option>
+        </select>
+      </label>
+      <button id="generateBtn">生成姓名</button>
+      <button id="csvBtn">导出 CSV</button>
+      <button id="pdfBtn">导出 PDF</button>
+    </div>
+    <div id="nameGrid" class="name-grid"></div>
+  </main>
+  
+  <div class="toast" id="toast"></div>
+
+  <footer>
+    <p>数据来源：</p>
+    <ul style="list-style: none; padding: 0">
+      <li>🇬🇧 英文名：<a href="https://github.com/smashew/NameDatabases" target="_blank">smashew/NameDatabases</a></li>
+      <li>🇨🇳 中文名：<a href="https://github.com/overtrue/chinese-name-generator" target="_blank">overtrue</a></li>
+      <li>🇮🇩 印尼名：<a href="https://github.com/yanpritzker/random-indonesian-names" target="_blank">yanpritzker</a></li>
+    </ul>
+    <p>本项目遵循 MIT 协议并致谢原作者 🙇‍♂️</p>
+  </footer>
+
+  <script type="module">
+    let nameData = {};
+    let generatedNames = [];
+
+    // --- DOM 元素获取 ---
+    const languageSelect = document.getElementById('languageSelect');
+    const nameGrid = document.getElementById('nameGrid');
+    const toast = document.getElementById('toast');
+    const generateBtn = document.getElementById('generateBtn');
+    const csvBtn = document.getElementById('csvBtn');
+    const pdfBtn = document.getElementById('pdfBtn');
+
+    // --- 核心函数 ---
+
+    async function loadNameData(lang) {
+      // 动态导入对应的姓名数据模块
+      const module = await import(`./names-${lang}.js`);
+      return module[`names${lang.toUpperCase()}`];
+    }
+
+    function getRandom(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+    
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    async function generateNames(count = 60) {
+      const lang = languageSelect.value;
+      try {
+        nameData = await loadNameData(lang);
+      } catch (error) {
+        console.error(`无法加载姓名数据: ${error}`);
+        showToast('错误：无法加载姓名数据文件！');
+        return;
+      }
+      
+      nameGrid.innerHTML = '';
+      generatedNames = [];
+
+      for (let i = 0; i < count; i++) {
+        const first = getRandom(nameData.firstNames);
+        const last = getRandom(nameData.lastNames);
+        let fullName;
+
+        // 根据语言优化姓名组合逻辑
+        if (lang === 'zh') {
+            const second = getRandom(nameData.firstNames);
+            fullName = `${last}${first}${second}`;
+        } else {
+            fullName = `${first} ${last}`;
+        }
+        
+        generatedNames.push(fullName);
+
+        const btn = document.createElement('button');
+        btn.className = 'name-button';
+        btn.textContent = fullName;
+        btn.onclick = () => {
+          navigator.clipboard.writeText(fullName).then(() => {
+            showToast(`已复制: ${fullName}`);
+          });
+        };
+        nameGrid.appendChild(btn);
+      }
+    }
+
+    function downloadCSV() {
+      if (generatedNames.length === 0) {
+        showToast('请先生成姓名后再导出');
+        return;
+      }
+      const csvContent = "data:text/csv;charset=utf-8," + generatedNames.join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', 'names.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    
+    function downloadPDF() {
+      if (generatedNames.length === 0) {
+        showToast('请先生成姓名后再导出');
+        return;
+      }
+      
+      // 使用 jsPDF 直接从数据生成 PDF
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+      
+      // 注意: jsPDF 默认不支持中文，需要引入中文字体文件
+      // 这是一个复杂的步骤，这里我们先处理非中文的情况
+      // 如果需要完整的中文支持，需要额外集成字体文件
+      // 例如：pdf.addFont('msyh.ttf', 'msyh', 'normal'); pdf.setFont('msyh');
+
+      pdf.setFontSize(18);
+      pdf.text('生成的姓名列表', 14, 22);
+      pdf.setFontSize(11);
+      
+      let y = 30; // 初始Y坐标
+      const margin = 10;
+      const pageHeight = pdf.internal.pageSize.height;
+
+      generatedNames.forEach((name, index) => {
+        if (y > pageHeight - margin) {
+          pdf.addPage();
+          y = 20; // 新页面的起始Y坐标
+        }
+        pdf.text(`${index + 1}. ${name}`, 14, y);
+        y += 7; // 行距
+      });
+
+      pdf.save('names.pdf');
+      showToast('PDF 已开始下载');
+    }
+
+    // --- 事件监听器绑定 ---
+    generateBtn.addEventListener('click', () => generateNames());
+    csvBtn.addEventListener('click', downloadCSV);
+    pdfBtn.addEventListener('click', downloadPDF);
+
+    // --- 初始加载 ---
+    window.onload = () => generateNames();
+  </script>
+</body>
+</html>
