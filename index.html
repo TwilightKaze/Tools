@@ -131,7 +131,7 @@
 <body>
 
   <header>
-    <h1>🌍 多语言姓名生成器</h1>
+    <h1>🌍 名字生成器</h1>
   </header>
 
   <main>
@@ -154,7 +154,7 @@
 
   <footer>
     <p>数据来源：</p>
-    <ul style="list-style: none; padding: 0">
+    <ul>
       <li>🇬🇧 英文名：<a href="https://github.com/smashew/NameDatabases" target="_blank">smashew/NameDatabases</a></li>
       <li>🇨🇳 中文名：<a href="https://github.com/overtrue/chinese-name-generator" target="_blank">overtrue</a></li>
       <li>🇮🇩 印尼名：<a href="https://github.com/yanpritzker/random-indonesian-names" target="_blank">yanpritzker</a></li>
@@ -165,6 +165,7 @@
   <script type="module">
     let nameData = {};
     let generatedNames = [];
+    let singleCharChineseNames = []; // 缓存单字名列表
 
     // --- DOM 元素获取 ---
     const languageSelect = document.getElementById('languageSelect');
@@ -177,9 +178,13 @@
     // --- 核心函数 ---
 
     async function loadNameData(lang) {
-      // 动态导入对应的姓名数据模块
       const module = await import(`./names-${lang}.js`);
-      return module[`names${lang.toUpperCase()}`];
+      const data = module[`names${lang.toUpperCase()}`];
+      // 如果是中文，预处理并缓存单字名列表以提高效率
+      if (lang === 'zh') {
+        singleCharChineseNames = data.firstNames.filter(name => name.length === 1);
+      }
+      return data;
     }
 
     function getRandom(arr) {
@@ -206,15 +211,32 @@
       generatedNames = [];
 
       for (let i = 0; i < count; i++) {
-        const first = getRandom(nameData.firstNames);
         const last = getRandom(nameData.lastNames);
         let fullName;
 
-        // 根据语言优化姓名组合逻辑
+        // 【全新中文姓名生成逻辑】
         if (lang === 'zh') {
-            const second = getRandom(nameData.firstNames);
-            fullName = `${last}${first}${second}`;
+            let givenName;
+            const firstPart = getRandom(nameData.firstNames);
+
+            // 如果随机取到的已经是双字名，直接使用
+            if (firstPart.length >= 2) {
+                givenName = firstPart;
+            } 
+            // 如果取到的是单字名
+            else {
+                // 80%的概率再加一个单字，组成双名
+                if (Math.random() < 0.8 && singleCharChineseNames.length > 0) {
+                    const secondPart = getRandom(singleCharChineseNames);
+                    givenName = firstPart + secondPart;
+                } else {
+                    // 20%的概率直接使用这个单字名
+                    givenName = firstPart;
+                }
+            }
+            fullName = `${last}${givenName}`;
         } else {
+            const first = getRandom(nameData.firstNames);
             fullName = `${first} ${last}`;
         }
         
@@ -253,30 +275,24 @@
         return;
       }
       
-      // 使用 jsPDF 直接从数据生成 PDF
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF();
       
-      // 注意: jsPDF 默认不支持中文，需要引入中文字体文件
-      // 这是一个复杂的步骤，这里我们先处理非中文的情况
-      // 如果需要完整的中文支持，需要额外集成字体文件
-      // 例如：pdf.addFont('msyh.ttf', 'msyh', 'normal'); pdf.setFont('msyh');
-
       pdf.setFontSize(18);
       pdf.text('生成的姓名列表', 14, 22);
       pdf.setFontSize(11);
       
-      let y = 30; // 初始Y坐标
+      let y = 30;
       const margin = 10;
       const pageHeight = pdf.internal.pageSize.height;
 
       generatedNames.forEach((name, index) => {
         if (y > pageHeight - margin) {
           pdf.addPage();
-          y = 20; // 新页面的起始Y坐标
+          y = 20;
         }
         pdf.text(`${index + 1}. ${name}`, 14, y);
-        y += 7; // 行距
+        y += 7;
       });
 
       pdf.save('names.pdf');
@@ -287,6 +303,8 @@
     generateBtn.addEventListener('click', () => generateNames());
     csvBtn.addEventListener('click', downloadCSV);
     pdfBtn.addEventListener('click', downloadPDF);
+    // 当语言切换时，也重新生成一次
+    languageSelect.addEventListener('change', () => generateNames());
 
     // --- 初始加载 ---
     window.onload = () => generateNames();
